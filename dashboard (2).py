@@ -29,7 +29,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Đường dẫn đến thư mục chứa ảnh trên máy tính của bạn
-IMG_DIR = r"D:\2321003619_Nguyễn Tuyết Trinh\X-RAY"
+IMG_DIR = r"D:\2321003619_Nguyễn Tuyết Trinh\X-RAY\images-224"
 
 # ── 2. DB CONNECTION ───────────────────────────────────────
 @st.cache_resource
