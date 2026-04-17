@@ -91,7 +91,7 @@ with st.sidebar:
     selected_date = st.selectbox("📅 Select Batch Date", dates) if dates else None
 
 # ── 5. HEADER ──────────────────────────────────────────────
-st.title("🫁 Smart X-Ray Analytics Hub")
+st.title("🫁 X-Ray Analytics ")
 st.caption("Powered by Lambda Architecture (Realtime Inference + Batch Aggregation)")
 st.divider()
 
