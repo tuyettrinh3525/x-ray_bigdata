@@ -28,7 +28,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-IMG_DIR = "images"
+IMG_DIR = r"D:\2321003619_Nguyễn Tuyết Trinh\X-RAY"
 
 # ── 2. DB CONNECTION ───────────────────────────────────────
 @st.cache_resource
