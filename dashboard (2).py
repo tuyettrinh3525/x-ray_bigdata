@@ -24,7 +24,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Cấu hình đường dẫn thư mục chứa ảnh X-quang
-IMG_DIR = "/content/images-224/images-224"
+IMG_DIR = "images"
 
 # ── 2. DATABASE CONNECTION ─────────────────────────────────────────────────
 
