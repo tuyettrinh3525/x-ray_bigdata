@@ -18,7 +18,7 @@ IMG_DIR = "images"
 # ── 2. DB CONNECTION ───────────────────────────────────────
 @st.cache_resource
 def get_db():
-    client = MongoClient("mongodb://localhost:27017/")
+    client = MongoClient("mongodb+srv://tuyettrinh3525:Trinh3005@clusterbigdata.ubhpjjc.mongodb.net/?appName=ClusterBigData")
     return client["chestxray_db"]
 
 db = get_db()
