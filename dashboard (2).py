@@ -1,202 +1,196 @@
 # ============================================================
-# DASHBOARD — FINAL (SYNC SPEED + BATCH LAYER)
+# DASHBOARD V2 — ANALYTICS, INSIGHTS & UI TWEAKS
 # ============================================================
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from pymongo import MongoClient
 from datetime import datetime, timezone
 import os
-from PIL import Image
 
-# ── 1. CONFIG ───────────────────────────────────────────────
-st.set_page_config(page_title="Smart X-Ray Analytics", layout="wide")
+# ── 1. CONFIG & CSS ─────────────────────────────────────────
+st.set_page_config(page_title="Smart X-Ray Analytics", page_icon="🫁", layout="wide")
+
+# CSS Tiêm trực tiếp để làm đẹp giao diện
+st.markdown("""
+<style>
+    div[data-testid="metric-container"] {
+        background-color: #ffffff; border: 1px solid #e0e6ed;
+        padding: 15px 20px; border-radius: 12px;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.05);
+    }
+    div[data-testid="metric-container"] label { color: #64748b !important; font-weight: 600; }
+    div[data-testid="metric-container"] div[data-testid="stMetricValue"] { color: #0f172a !important; font-weight: 800; }
+    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; font-weight: 600; }
+</style>
+""", unsafe_allow_html=True)
 
 IMG_DIR = "images"
 
 # ── 2. DB CONNECTION ───────────────────────────────────────
 @st.cache_resource
 def get_db():
-    # ⚠️ LƯU Ý: Tốt nhất nên dùng st.secrets["MONGO_URI"] khi deploy
-    # Mình đã giữ lại chuỗi kết nối của bạn nhưng hãy cẩn thận khi public code này
     MONGO_URI = "mongodb+srv://tuyettrinh3525:Trinh3005@clusterbigdata.ubhpjjc.mongodb.net/?appName=ClusterBigData"
     client = MongoClient(MONGO_URI)
     return client["chestxray_db"]
 
 db = get_db()
 
-# ── 3. LOAD DATA ───────────────────────────────────────────
-
-# 🔥 SPEED: dùng processing_timestamp (realtime đúng)
+# ── 3. DATA LOADERS ────────────────────────────────────────
 def load_live(limit=50):
-    docs = list(
-        db["predictions"]
-        .find({}, {"_id": 0})
-        .sort("processing_timestamp", -1)
-        .limit(limit)
-    )
+    docs = list(db["predictions"].find({}, {"_id": 0}).sort("processing_timestamp", -1).limit(limit))
     return pd.DataFrame(docs) if docs else pd.DataFrame()
 
-# 🔥 BATCH
 @st.cache_data(ttl=60)
 def load_batch(date):
     return db["batch_stats"].find_one({"date": date}, {"_id": 0})
 
 @st.cache_data(ttl=60)
 def get_dates():
-    # Thêm check an toàn nếu collection rỗng
     cursor = db["batch_stats"].find({}, {"date": 1, "_id": 0}).sort("date", -1)
     return [d["date"] for d in cursor if "date" in d]
 
+@st.cache_data(ttl=300)
+def load_economic_history():
+    # Lấy toàn bộ dữ liệu batch để vẽ biểu đồ xu hướng
+    cursor = db["batch_stats"].find({}, {"date": 1, "total_cases": 1, "abnormal_cases": 1, "_id": 0}).sort("date", 1)
+    return pd.DataFrame(list(cursor))
+
 # ── 4. SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
-    st.title("⚙️ Control")
-
-    if st.button("🔄 Refresh"):
+    st.image("https://cdn-icons-png.flaticon.com/512/3003/3003261.png", width=60)
+    st.title("Admin Control")
+    if st.button("🔄 Refresh Data", use_container_width=True):
         st.cache_data.clear()
-
+    
     st.divider()
-
     dates = get_dates()
-    selected_date = st.selectbox("📅 Batch Date", dates) if dates else None
+    selected_date = st.selectbox("📅 Select Batch Date", dates) if dates else None
 
 # ── 5. HEADER ──────────────────────────────────────────────
-st.title("🫁 Smart X-Ray Analytics")
-st.caption("Lambda Architecture: Speed + Batch")
+st.title("🫁 Smart X-Ray Analytics Hub")
+st.caption("Powered by Lambda Architecture (Realtime Inference + Batch Aggregation)")
 st.divider()
 
-tab1, tab2, tab3 = st.tabs(["⚡ Speed", "📦 Batch", "💰 Economic"])
+tab1, tab2, tab3 = st.tabs(["⚡ Realtime Speed", "📦 Daily Batch Insights", "💰 Economic ROI"])
 
 # ============================================================
-# ⚡ SPEED TAB
+# ⚡ TAB 1: SPEED (REALTIME)
 # ============================================================
 with tab1:
-    st.subheader("🔴 Realtime Monitoring")
-
+    st.subheader("🔴 Live Triage Queue")
     df = load_live()
 
     if df.empty:
-        st.info("No realtime data available in the database.")
+        st.info("No realtime data streaming right now.")
     else:
-        # Bắt lỗi nếu column không tồn tại
         req_emg_sum = int(df["requires_emergency"].sum()) if "requires_emergency" in df.columns else 0
         prio_sum = int((df["priority"] == 3).sum()) if "priority" in df.columns else 0
-        latency_mean = df['processing_time_ms'].mean() if "processing_time_ms" in df.columns else 0
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total", len(df))
-        col2.metric("Emergency", req_emg_sum)
-        col3.metric("Priority 3", prio_sum)
-        col4.metric("Latency (ms)", f"{latency_mean:.1f}")
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Recent Scans", len(df))
+        c2.metric("Emergency Flags", req_emg_sum, delta="High Alert" if req_emg_sum > 0 else "Normal", delta_color="inverse")
+        c3.metric("Critical Priority", prio_sum)
+        c4.metric("Avg Latency", f"{df['processing_time_ms'].mean():.1f} ms")
 
         st.divider()
-
-        st.markdown("### 🚨 Emergency Cases")
-
+        st.markdown("### 🚨 High Priority Patients (Needs Immediate Review)")
+        
         df_emg = df[df["priority"] == 3] if "priority" in df.columns else pd.DataFrame()
-
+        
         if df_emg.empty:
-            st.success("No emergency cases at the moment.")
+            st.success("✅ Queue clear. No critical patients waiting.")
         else:
             for _, r in df_emg.head(5).iterrows():
-                c1, c2 = st.columns([1, 3])
-
-                with c1:
-                    # Xử lý an toàn khi không tìm thấy ảnh trên web server
-                    img_filename = r.get("image_filename", "")
-                    path = os.path.join(IMG_DIR, img_filename) if img_filename else ""
-                    
-                    try:
-                        if os.path.exists(path):
-                            st.image(Image.open(path))
-                        else:
-                            st.image("https://via.placeholder.com/224?text=No+Image")
-                    except Exception:
-                        st.image("https://via.placeholder.com/224?text=Error")
-
-                with c2:
-                    st.error(f"🚨 Patient {r.get('patient_id', 'Unknown')}")
-
-                    diseases = r.get("diseases", [])
-                    st.write("Disease:", ", ".join(diseases) if diseases else "None")
-
-                    st.write("Severity:", r.get("severity", "Unknown"))
-
-                    # 🔥 Xử lý Timestamp an toàn chống lỗi crash web
-                    try:
-                        ts = r.get("processing_timestamp")
-                        if ts:
-                            ts_pd = pd.to_datetime(ts)
-                            if ts_pd.tzinfo is None:
-                                ts_pd = ts_pd.tz_localize('UTC')
-                            time_ago = int((pd.Timestamp.utcnow() - ts_pd).total_seconds())
-                            st.caption(f"{time_ago}s ago")
-                        else:
-                            st.caption("Timestamp missing")
-                    except Exception as e:
-                        st.caption("Time calc error")
+                with st.container():
+                    col_img, col_info = st.columns([1, 4])
+                    with col_img:
+                        st.image("https://via.placeholder.com/150/ffcccc/ff0000?text=Critical+XRay", use_column_width=True)
+                    with col_info:
+                        st.error(f"**Patient ID:** {r.get('patient_id', 'N/A')}")
+                        st.write(f"**Detected:** {', '.join(r.get('diseases', []))}")
+                        st.write(f"**Severity:** {r.get('severity', 'Unknown').upper()}")
+                st.write("") # spacing
 
 # ============================================================
-# 📦 BATCH TAB
+# 📦 TAB 2: BATCH INSIGHTS
 # ============================================================
 with tab2:
-    st.subheader("📊 Daily Analytics")
-
     if selected_date:
         bs = load_batch(selected_date)
+        if bs:
+            st.subheader(f"📊 Analytics for {selected_date}")
+            
+            # --- INSIGHT: Đánh giá Tỷ lệ Cấp cứu ---
+            emg_rate = bs.get('emergency_rate_pct', 0)
+            if emg_rate > 10:
+                st.warning(f"⚠️ **Operational Insight:** Tỷ lệ ca cấp cứu hôm nay rất cao ({emg_rate}%). Đề xuất điều phối thêm Bác sĩ trực!")
+            else:
+                st.success(f"✅ **Operational Insight:** Lượng ca bệnh ổn định. Cần {bs.get('doctors_needed', 0)} bác sĩ để xử lý khối lượng hôm nay.")
 
-        if not bs:
-            st.warning("No batch data for this date.")
-        else:
-            col1, col2, col3, col4 = st.columns(4)
-
-            col1.metric("Total", bs.get("total_cases", 0))
-            col2.metric("Abnormal", bs.get("abnormal_cases", 0))
-            col3.metric("Emergency", bs.get("emergency_cases", 0))
-            col4.metric("Doctors", bs.get("doctors_needed", 0))
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Total Scans", bs.get("total_cases", 0))
+            c2.metric("Abnormal Findings", bs.get("abnormal_cases", 0))
+            c3.metric("Emergency Cases", bs.get("emergency_cases", 0))
+            c4.metric("Doctors Required", bs.get("doctors_needed", 0))
 
             st.divider()
+            c_left, c_right = st.columns(2)
 
-            c1, c2 = st.columns(2)
-
-            with c1:
+            with c_left:
+                st.markdown("**🦠 Top Abnormal Diseases** *(Filtered 'No Finding')*")
                 dis = bs.get("disease_distribution", {})
                 if dis:
-                    df_dis = pd.DataFrame(dis.items(), columns=["disease", "count"])
-                    st.plotly_chart(px.bar(df_dis, x="count", y="disease", orientation='h'), use_container_width=True)
+                    df_dis = pd.DataFrame(dis.items(), columns=["Disease", "Count"])
+                    # Tách insight: Bỏ "No Finding" để biểu đồ không bị ép nhỏ
+                    df_dis = df_dis[df_dis["Disease"] != "No Finding"].sort_values("Count", ascending=True)
+                    fig_bar = px.bar(df_dis, x="Count", y="Disease", orientation='h', color="Count", color_continuous_scale="Reds")
+                    fig_bar.update_layout(margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig_bar, use_container_width=True)
 
-            with c2:
+            with c_right:
+                st.markdown("**⚠️ Severity Distribution**")
                 sev = bs.get("severity_distribution", {})
                 if sev:
-                    df_sev = pd.DataFrame(sev.items(), columns=["severity", "count"])
-                    st.plotly_chart(px.pie(df_sev, values="count", names="severity"), use_container_width=True)
+                    df_sev = pd.DataFrame(sev.items(), columns=["Severity", "Count"])
+                    # Custom màu cho hợp Y tế
+                    color_map = {'critical':'#7f1d1d', 'high':'#dc2626', 'moderate':'#f59e0b', 'mild':'#3b82f6', 'none':'#94a3b8'}
+                    fig_pie = px.pie(df_sev, values="Count", names="Severity", hole=0.4, color='Severity', color_discrete_map=color_map)
+                    fig_pie.update_layout(margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig_pie, use_container_width=True)
 
 # ============================================================
-# 💰 ECONOMIC TAB
+# 💰 TAB 3: ECONOMIC ROI
 # ============================================================
 with tab3:
-    st.subheader("💰 Economic Impact")
+    st.subheader("💰 Return on Investment (ROI) & Efficiency")
+    
+    df_eco = load_economic_history()
+    if not df_eco.empty:
+        df_eco['normal_cases'] = df_eco['total_cases'] - df_eco['abnormal_cases']
+        # Tính lũy kế (Cumulative)
+        df_eco['cum_saved_vnd'] = (df_eco['normal_cases'] * 150000).cumsum()
+        
+        total_historical = df_eco['total_cases'].sum()
+        total_normal = df_eco['normal_cases'].sum()
+        total_saved = df_eco['cum_saved_vnd'].iloc[-1]
 
-    total_cases = 0
-    total_abnormal = 0
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Scans Processed", f"{total_historical:,}")
+        c2.metric("Healthy Cases Filtered", f"{total_normal:,}")
+        c3.metric("Total Cost Saved", f"{total_saved/1e9:.2f} Billion VND", delta="Cost Optimized")
 
-    dates_list = get_dates()
-    if dates_list:
-        for d in dates_list:
-            bs = load_batch(d)
-            if bs:
-                total_cases += bs.get("total_cases", 0)
-                total_abnormal += bs.get("abnormal_cases", 0)
-
-    normal = total_cases - total_abnormal
-    saved = normal * 150_000
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric("Total Historical Cases", total_cases)
-    c2.metric("Normal Cases Triaged", normal)
-    c3.metric("Estimated Cost Saved (VND)", f"{saved/1e6:.1f}M")
-
-st.divider()
-st.caption("Lambda Architecture Demo")
+        st.divider()
+        st.markdown("### 📈 Cumulative Savings Over Time")
+        
+        # Vẽ biểu đồ đường thể hiện sự tăng trưởng kinh tế
+        fig_line = go.Figure()
+        fig_line.add_trace(go.Scatter(
+            x=df_eco['date'], y=df_eco['cum_saved_vnd'], 
+            mode='lines+markers',
+            fill='tozeroy',
+            line=dict(color='#10b981', width=3),
+            name="V
