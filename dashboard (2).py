@@ -193,4 +193,13 @@ with tab3:
             mode='lines+markers',
             fill='tozeroy',
             line=dict(color='#10b981', width=3),
-            name="V
+            name="VND Saved"
+        ))
+        fig_line.update_layout(
+            xaxis_title="Date", yaxis_title="VND (Cumulative)",
+            margin=dict(l=0, r=0, t=30, b=0),
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.info("Not enough historical data to generate ROI trends.")
