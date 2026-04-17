@@ -42,8 +42,27 @@ db = get_db()
 
 # ── 3. DATA LOADERS ────────────────────────────────────────
 def load_live(limit=50):
-    docs = list(db["predictions"].find({}, {"_id": 0}).sort("processing_timestamp", -1).limit(limit))
-    return pd.DataFrame(docs) if docs else pd.DataFrame()
+    # 1. Sắp xếp theo trường thời gian mới (đã lồng vào system_meta)
+    docs = list(db["predictions"].find({}, {"_id": 0}).sort("system_meta.timestamp", -1).limit(limit))
+    
+    if not docs:
+        return pd.DataFrame()
+        
+    # 2. Trải phẳng JSON lồng nhau thành bảng 2 chiều
+    df = pd.json_normalize(docs)
+    
+    # 3. Đổi tên cột lại cho khớp với code giao diện (để Tab 1 không bị lỗi)
+    df = df.rename(columns={
+        "triage_assessment.requires_emergency": "requires_emergency",
+        "triage_assessment.priority": "priority",
+        "triage_assessment.severity": "severity",
+        "system_meta.processing_time_ms": "processing_time_ms",
+        "patient_info.patient_id": "patient_id",
+        "clinical_findings.image_filename": "image_filename",
+        "clinical_findings.diseases": "diseases"
+    })
+    
+    return df
 
 @st.cache_data(ttl=60)
 def load_batch(date):
