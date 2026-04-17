@@ -28,6 +28,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Đường dẫn đến thư mục chứa ảnh trên máy tính của bạn
 IMG_DIR = r"D:\2321003619_Nguyễn Tuyết Trinh\X-RAY"
 
 # ── 2. DB CONNECTION ───────────────────────────────────────
@@ -107,13 +108,26 @@ with tab1:
             for _, r in df_emg.head(5).iterrows():
                 with st.container():
                     col_img, col_info = st.columns([1, 4])
+                    
                     with col_img:
-                        st.image("https://via.placeholder.com/150/ffcccc/ff0000?text=Critical+XRay", use_column_width=True)
+                        img_name = r.get('image_filename', '')  
+                        full_path = os.path.join(IMG_DIR, img_name)
+                        
+                        if os.path.exists(full_path):
+                            # Hiện ảnh thật từ ổ đĩa
+                            st.image(full_path, use_container_width=True)
+                        else:
+                            # Hiện ảnh minh họa nếu chưa có file trên máy
+                            st.image("https://img.freepik.com/premium-vector/x-ray-human-chest-icon-isolated-blue-background_532867-46.jpg", 
+                                     caption=f"Missing: {img_name}", use_container_width=True)
+                    
                     with col_info:
                         st.error(f"**Patient ID:** {r.get('patient_id', 'N/A')}")
-                        st.write(f"**Detected:** {', '.join(r.get('diseases', []))}")
-                        st.write(f"**Severity:** {r.get('severity', 'Unknown').upper()}")
-                st.write("") # spacing
+                        diseases = r.get('diseases', [])
+                        st.write(f"**Detected:** {', '.join(diseases) if diseases else 'None'}")
+                        st.write(f"**Severity:** `{str(r.get('severity', 'Unknown')).upper()}`")
+                
+                st.write("") # Tạo khoảng trắng nhỏ giữa các bệnh nhân
 
 # ============================================================
 # 📦 TAB 2: BATCH INSIGHTS
@@ -145,7 +159,6 @@ with tab2:
                 dis = bs.get("disease_distribution", {})
                 if dis:
                     df_dis = pd.DataFrame(dis.items(), columns=["Disease", "Count"])
-                    # Tách insight: Bỏ "No Finding" để biểu đồ không bị ép nhỏ
                     df_dis = df_dis[df_dis["Disease"] != "No Finding"].sort_values("Count", ascending=True)
                     fig_bar = px.bar(df_dis, x="Count", y="Disease", orientation='h', color="Count", color_continuous_scale="Reds")
                     fig_bar.update_layout(margin=dict(l=0, r=0, t=0, b=0))
@@ -156,7 +169,6 @@ with tab2:
                 sev = bs.get("severity_distribution", {})
                 if sev:
                     df_sev = pd.DataFrame(sev.items(), columns=["Severity", "Count"])
-                    # Custom màu cho hợp Y tế
                     color_map = {'critical':'#7f1d1d', 'high':'#dc2626', 'moderate':'#f59e0b', 'mild':'#3b82f6', 'none':'#94a3b8'}
                     fig_pie = px.pie(df_sev, values="Count", names="Severity", hole=0.4, color='Severity', color_discrete_map=color_map)
                     fig_pie.update_layout(margin=dict(l=0, r=0, t=0, b=0))
@@ -171,7 +183,6 @@ with tab3:
     df_eco = load_economic_history()
     if not df_eco.empty:
         df_eco['normal_cases'] = df_eco['total_cases'] - df_eco['abnormal_cases']
-        # Tính lũy kế (Cumulative)
         df_eco['cum_saved_vnd'] = (df_eco['normal_cases'] * 150000).cumsum()
         
         total_historical = df_eco['total_cases'].sum()
@@ -186,7 +197,6 @@ with tab3:
         st.divider()
         st.markdown("### 📈 Cumulative Savings Over Time")
         
-        # Vẽ biểu đồ đường thể hiện sự tăng trưởng kinh tế
         fig_line = go.Figure()
         fig_line.add_trace(go.Scatter(
             x=df_eco['date'], y=df_eco['cum_saved_vnd'], 
